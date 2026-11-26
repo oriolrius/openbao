@@ -279,10 +279,17 @@ func TestPKCS1v15SessionKey_PublicChecks(t *testing.T) {
 	if err != nil || !bytes.Equal(got, want) {
 		t.Fatalf("version 2 did not recover its session key: %v", err)
 	}
-	// The wrong version does not report padding: it yields the fallback.
-	got, err = p.DecryptPKCS1v15SessionKey(1, ciphertext2, 24)
-	if err != nil || bytes.Equal(got, want) {
-		t.Fatalf("version 1 must return a fallback for a version 2 ciphertext: %v", err)
+	// Encrypt under the smaller modulus so the block is a valid public input
+	// to both versions. Out-of-range inputs are tested separately above.
+	wrongVersion := 1
+	wrongKeyInput := ciphertext2
+	if pub.N.Cmp(pub2.N) < 0 {
+		wrongVersion = 2
+		wrongKeyInput = rawRSAEncrypt(t, pub, encodeBlock(t, pub.Size(), 0x02, want))
+	}
+	got, err = p.DecryptPKCS1v15SessionKey(wrongVersion, wrongKeyInput, len(want))
+	if err != nil || len(got) != len(want) || bytes.Equal(got, want) {
+		t.Fatalf("wrong version %d must return a session-length fallback: %v", wrongVersion, err)
 	}
 	if _, err = p.DecryptPKCS1v15SessionKey(1, valid, 16); err != nil {
 		t.Fatalf("version 1 stays usable after rotation: %v", err)
