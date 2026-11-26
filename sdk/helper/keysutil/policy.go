@@ -546,6 +546,11 @@ type Policy struct {
 	// Whether the key has been soft deleted.
 	SoftDeleted bool `json:"soft_deleted"`
 
+	// AllowPKCS1v15SessionKey permits the PKCS #1 v1.5 session-key transport
+	// operation (PKI Manager downstream, SCEP CMS). It can be set only when
+	// an RSA-3072 key is created or imported, and it cannot be changed later.
+	AllowPKCS1v15SessionKey bool `json:"allow_pkcs1v15_session_key,omitempty"`
+
 	// Reference to the named external key. This is only used during
 	// creation and rotation of policies. To rotate an external key,
 	// first set this field and then call p.Rotate(...) or

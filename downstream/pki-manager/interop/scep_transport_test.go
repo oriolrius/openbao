@@ -15,12 +15,19 @@ import (
 	"testing"
 )
 
-// TestOpenSSLRSAKeyTransport checks the RSA key transport used by SCEP.
-// It requires the openssl executable. Only the public RSA key goes to disk.
+// TestOpenSSLRSAKeyTransport checks the RSA key transport used by SCEP
+// against OpenSSL. It is an optional cross-check: without openssl on PATH it
+// skips, unless PKI_MANAGER_REQUIRE_OPENSSL=1 makes OpenSSL mandatory.
+// The mandatory tests use Go fixtures only (sdk/helper/keysutil and
+// internal/builtin/logical/transit, *PKCS1v15SessionKey*).
+// Only the public RSA key goes to disk.
 func TestOpenSSLRSAKeyTransport(t *testing.T) {
 	openssl, err := exec.LookPath("openssl")
 	if err != nil {
-		t.Fatal("this interoperability test requires openssl on PATH")
+		if os.Getenv("PKI_MANAGER_REQUIRE_OPENSSL") == "1" {
+			t.Fatal("PKI_MANAGER_REQUIRE_OPENSSL=1 but openssl is not on PATH")
+		}
+		t.Skip("optional OpenSSL cross-check: openssl is not on PATH")
 	}
 	raKey, err := rsa.GenerateKey(rand.Reader, 3072)
 	if err != nil {
@@ -32,7 +39,7 @@ func TestOpenSSLRSAKeyTransport(t *testing.T) {
 	}
 	publicPath := filepath.Join(t.TempDir(), "ra-public.pem")
 	publicPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: spki})
-	if err := os.WriteFile(publicPath, publicPEM, 0600); err != nil {
+	if err := os.WriteFile(publicPath, publicPEM, 0o600); err != nil {
 		t.Fatal(err)
 	}
 

@@ -62,6 +62,10 @@ type PolicyRequest struct {
 
 	// The reference to the external key, if using one.
 	ExternalKeyRef string
+
+	// AllowPKCS1v15SessionKey permits PKCS #1 v1.5 session-key transport
+	// on a new RSA-3072 key (PKI Manager downstream).
+	AllowPKCS1v15SessionKey bool
 }
 
 type LockManager struct {
@@ -433,6 +437,8 @@ func (lm *LockManager) GetPolicyWithLockType(ctx context.Context, req PolicyRequ
 			AutoRotatePeriod:     req.AutoRotatePeriod,
 			KeySize:              req.KeySize,
 			ExternalKeyRef:       req.ExternalKeyRef,
+
+			AllowPKCS1v15SessionKey: req.AllowPKCS1v15SessionKey,
 		}
 
 		if req.Derived {
@@ -525,6 +531,8 @@ func (lm *LockManager) ImportPolicy(ctx context.Context, req PolicyRequest, key 
 			AutoRotatePeriod:         req.AutoRotatePeriod,
 			AllowImportedKeyRotation: req.AllowImportedKeyRotation,
 			Imported:                 true,
+
+			AllowPKCS1v15SessionKey: req.AllowPKCS1v15SessionKey,
 		}
 	}
 

@@ -118,6 +118,14 @@ key in plaintext format. Once set,
 this cannot be disabled.`,
 			},
 
+			"allow_pkcs1v15_session_key": {
+				Type: framework.TypeBool,
+				Description: `Permits the session-key/pkcs1v15 operation
+(RSAES-PKCS1-v1_5 session-key transport for SCEP CMS).
+Valid only for rsa-3072 keys. Set it only at creation;
+it cannot be changed later. Default: false.`,
+			},
+
 			"context": {
 				Type: framework.TypeString,
 				Description: `Base64 encoded context for key derivation.
@@ -281,6 +289,7 @@ func (b *backend) pathPolicyWrite(ctx context.Context, req *logical.Request, d *
 	externalKeyRef := d.Get("external_key_ref").(string)
 	allowPlaintextBackup := d.Get("allow_plaintext_backup").(bool)
 	autoRotatePeriod := time.Second * time.Duration(d.Get("auto_rotate_period").(int))
+	allowPKCS1v15SessionKey := d.Get("allow_pkcs1v15_session_key").(bool)
 
 	if autoRotatePeriod != 0 && autoRotatePeriod < time.Hour {
 		return logical.ErrorResponse("auto rotate period must be 0 to disable or at least an hour"), nil
@@ -300,6 +309,8 @@ func (b *backend) pathPolicyWrite(ctx context.Context, req *logical.Request, d *
 		AllowPlaintextBackup: allowPlaintextBackup,
 		AutoRotatePeriod:     autoRotatePeriod,
 		ExternalKeyRef:       externalKeyRef,
+
+		AllowPKCS1v15SessionKey: allowPKCS1v15SessionKey,
 	}
 
 	switch keyType {
@@ -362,6 +373,9 @@ func (b *backend) pathPolicyWrite(ctx context.Context, req *logical.Request, d *
 	} else if polReq.ExternalKeyRef != "" {
 		return logical.ErrorResponse("must provide type=external-key to use external_key_ref"), logical.ErrInvalidRequest
 	}
+	if resp := validatePKCS1v15SessionKeyOptIn(polReq); resp != nil {
+		return resp, logical.ErrInvalidRequest
+	}
 
 	p, upserted, err := b.GetPolicy(ctx, polReq, b.GetRandomReader())
 	if err != nil {
@@ -378,6 +392,9 @@ func (b *backend) pathPolicyWrite(ctx context.Context, req *logical.Request, d *
 	}
 	if !upserted {
 		resp.AddWarning(fmt.Sprintf("key %s already existed", name))
+	}
+	if allowPKCS1v15SessionKey && !p.AllowPKCS1v15SessionKey {
+		resp.AddWarning("allow_pkcs1v15_session_key applies only to a new key; the existing key is unchanged")
 	}
 	return resp, nil
 }
@@ -442,6 +459,9 @@ func (b *backend) formatKeyPolicy(p *keysutil.Policy, context []byte) (*logical.
 	}
 	if p.KeySize != 0 {
 		resp.Data["key_size"] = p.KeySize
+	}
+	if p.Type == keysutil.KeyType_RSA3072 {
+		resp.Data["allow_pkcs1v15_session_key"] = p.AllowPKCS1v15SessionKey
 	}
 
 	if p.Imported {

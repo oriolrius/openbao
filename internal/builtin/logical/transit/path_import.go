@@ -91,6 +91,14 @@ key in plaintext format. Once set,
 this cannot be disabled.`,
 			},
 
+			"allow_pkcs1v15_session_key": {
+				Type: framework.TypeBool,
+				Description: `Permits the session-key/pkcs1v15 operation
+(RSAES-PKCS1-v1_5 session-key transport for SCEP CMS).
+Valid only for rsa-3072 keys. Set it only at creation;
+it cannot be changed later. Default: false.`,
+			},
+
 			"context": {
 				Type: framework.TypeString,
 				Description: `Base64 encoded context for key derivation.
@@ -171,6 +179,7 @@ func (b *backend) pathImportWrite(ctx context.Context, req *logical.Request, d *
 	allowPlaintextBackup := d.Get("allow_plaintext_backup").(bool)
 	autoRotatePeriod := time.Second * time.Duration(d.Get("auto_rotate_period").(int))
 	allowRotation := d.Get("allow_rotation").(bool)
+	allowPKCS1v15SessionKey := d.Get("allow_pkcs1v15_session_key").(bool)
 
 	// Ensure the caller didn't supply "convergent_encryption" as a field, since it's not supported on import.
 	if _, ok := d.Raw["convergent_encryption"]; ok {
@@ -196,6 +205,8 @@ func (b *backend) pathImportWrite(ctx context.Context, req *logical.Request, d *
 		AutoRotatePeriod:         autoRotatePeriod,
 		AllowImportedKeyRotation: allowRotation,
 		IsPrivateKey:             isCiphertextSet,
+
+		AllowPKCS1v15SessionKey: allowPKCS1v15SessionKey,
 	}
 
 	switch strings.ToLower(keyType) {
@@ -231,6 +242,12 @@ func (b *backend) pathImportWrite(ctx context.Context, req *logical.Request, d *
 		polReq.KeyType = keysutil.KeyType_HMAC
 	default:
 		return logical.ErrorResponse("unknown key type: %v", keyType), logical.ErrInvalidRequest
+	}
+	if resp := validatePKCS1v15SessionKeyOptIn(polReq); resp != nil {
+		return resp, logical.ErrInvalidRequest
+	}
+	if allowPKCS1v15SessionKey && !isCiphertextSet {
+		return logical.ErrorResponse("allow_pkcs1v15_session_key requires an imported private key"), logical.ErrInvalidRequest
 	}
 
 	p, _, err := b.GetPolicy(ctx, polReq, b.GetRandomReader())
