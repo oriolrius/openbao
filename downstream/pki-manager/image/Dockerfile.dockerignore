@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# Build context of downstream/pki-manager/image/Dockerfile: Go sources and licenses only.
+.git
+.github
+**/node_modules
+ui
+website
+changelog
+bin
+pkg
