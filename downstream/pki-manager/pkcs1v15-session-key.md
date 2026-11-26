@@ -87,10 +87,11 @@ like other string fields.
 |---|---|
 | `sdk/helper/keysutil` `TestPKCS1v15SessionKey_*` | Recovery of 16/24/32 bytes from an independent math/big encoder and from crypto/rsa; malformed blocks and wrong lengths give stable, distinct fallbacks; size, modulus, length and version checks; rotation, `min_decryption_version`, soft delete; opt-in and RSA-3072 requirement; public-only versions; OAEP unchanged |
 | `internal/builtin/logical/transit` `TestTransit_PKCS1v15SessionKey_*` | Route fields and errors; opt-in on create and import only; generated and imported (migrated) RA; OAEP decrypt and signing unchanged; export and backup still refused; version lifecycle; HTTP cluster with an ACL token for one key, denied paths, audit HMAC of the session key |
-| `downstream/pki-manager/interop` | Optional OpenSSL cross-check of the primitive; skips without `openssl`, mandatory with `PKI_MANAGER_REQUIRE_OPENSSL=1` |
+| `downstream/pki-manager/interop` | Optional OpenSSL cross-check of the primitive; skips without `openssl`, mandatory with `PKI_MANAGER_REQUIRE_OPENSSL=1` (CI does not set it) |
+| `downstream/pki-manager/image/smokefixtures` | The Go helper of the image smoke test: TLS fixtures (chain, names, key mode 0600, handshake) and RSAES-PKCS1-v1_5 wrapping |
 
 ```
 (cd sdk && go test -count=1 -run PKCS1v15 ./helper/keysutil/)
 go test -count=1 -run PKCS1v15 ./internal/builtin/logical/transit/
-go test -count=1 -v ./downstream/pki-manager/interop/
+go test -count=1 -v ./downstream/pki-manager/image/smokefixtures/ ./downstream/pki-manager/interop/
 ```

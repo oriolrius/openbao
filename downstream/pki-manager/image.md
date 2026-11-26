@@ -31,8 +31,15 @@ The image:
   `/licenses`. The label `org.opencontainers.image.revision` names the source commit.
 
 The smoke test starts the image with TLS and Raft storage, initializes and unseals it,
-recovers an OpenSSL-wrapped session key through `session-key/pkcs1v15`, and checks that a
-token with only the RA paths cannot export, back up or reconfigure the key.
+recovers a PKCS#1 v1.5-wrapped session key through `session-key/pkcs1v15`, and checks that
+a token with only the RA paths cannot export, back up or reconfigure the key.
+
+It needs `docker`, `go` and `jq`, not the `openssl` CLI. The test TLS certificates and
+the wrapped session key come from `image/smokefixtures`, a small Go standard-library
+helper (`go test ./downstream/pki-manager/image/smokefixtures/` tests it). The container
+runs with the caller's uid, so the server key stays mode 0600 and the CA key is never
+written. The independent OpenSSL cross-check is the optional
+`downstream/pki-manager/interop` test.
 
 ## Release
 

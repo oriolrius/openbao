@@ -7,11 +7,15 @@
 # 2. A server starts from the image default command, with a TLS listener and Raft
 #    storage from a test configuration, and initializes and unseals.
 # 3. Transit: an rsa-3072 key with allow_pkcs1v15_session_key recovers a session key
-#    that OpenSSL wrapped with RSAES-PKCS1-v1_5 (the SCEP fork operation).
+#    that was wrapped with RSAES-PKCS1-v1_5 (the SCEP fork operation).
 # 4. A token with only the RA operation paths cannot export, back up or configure
 #    the key.
 #
-# Needs docker, openssl and jq. Test material only; nothing is kept.
+# Needs docker, go and jq; no openssl. The TLS fixtures and the wrapped session key
+# come from smokefixtures (Go standard library, next to this script); set
+# SMOKE_FIXTURES to a prebuilt binary of it to skip the build. The optional OpenSSL
+# cross-check is downstream/pki-manager/interop. Test material only; nothing is kept.
+# The container runs with the caller's uid, so private keys stay mode 0600.
 set -euo pipefail
 
 image="${1:?usage: smoke-test.sh IMAGE}"
@@ -28,15 +32,16 @@ if [ -n "${EXPECTED_COMMIT:-}" ]; then
 fi
 ok "version"
 
-# Test TLS: CA + server certificate for 127.0.0.1.
+fixtures="${SMOKE_FIXTURES:-}"
+if [ -z "$fixtures" ]; then
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+  fixtures="$work/smokefixtures"
+  (cd "$root" && go build -o "$fixtures" ./downstream/pki-manager/image/smokefixtures)
+fi
+
+# Test TLS: CA + server certificate for 127.0.0.1 (the CA key is never written).
 mkdir -p "$work/tls" "$work/config" "$work/data"
-openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj /CN=smoke-ca \
-  -addext basicConstraints=critical,CA:TRUE -keyout "$work/tls/ca-key.pem" -out "$work/tls/ca.pem" 2>/dev/null
-openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj /CN=openbao \
-  -keyout "$work/tls/server-key.pem" -out "$work/tls/server.csr" 2>/dev/null
-openssl x509 -req -in "$work/tls/server.csr" -CA "$work/tls/ca.pem" -CAkey "$work/tls/ca-key.pem" \
-  -CAcreateserial -days 1 -out "$work/tls/server.pem" \
-  -extfile <(printf 'subjectAltName=IP:127.0.0.1,DNS:localhost\nextendedKeyUsage=serverAuth\n') 2>/dev/null
+"$fixtures" tls "$work/tls"
 cat > "$work/config/server.hcl" <<'HCL'
 ui = false
 disable_mlock = true
@@ -52,7 +57,6 @@ storage "raft" {
 api_addr     = "https://127.0.0.1:8200"
 cluster_addr = "https://127.0.0.1:8201"
 HCL
-chmod -R a+rX "$work"; chmod 777 "$work/data"
 
 docker run -d --name "$name" --user "$(id -u):$(id -g)" \
   -v "$work/config:/openbao/config:ro" -v "$work/tls:/openbao/tls:ro" -v "$work/data:/openbao/data" \
@@ -73,13 +77,12 @@ bao write ra/keys/scep-ra type=rsa-3072 exportable=false allow_plaintext_backup=
   allow_pkcs1v15_session_key=true >/dev/null
 bao read -format=json ra/keys/scep-ra | jq -r '.data.keys["1"].public_key' > "$work/ra.pub.pem"
 [ "$(bao read -format=json ra/keys/scep-ra | jq -r .data.allow_pkcs1v15_session_key)" = true ] || fail "opt-in flag not reported"
-openssl rand 32 > "$work/session.key"
-openssl pkeyutl -encrypt -pubin -inkey "$work/ra.pub.pem" -pkeyopt rsa_padding_mode:pkcs1 \
-  -in "$work/session.key" -out "$work/wrapped.bin"
-got="$(bao write -format=json ra/session-key/pkcs1v15/scep-ra ciphertext="$(base64 -w0 "$work/wrapped.bin")" \
+wrapped="$("$fixtures" wrap "$work/ra.pub.pem" 32)"
+ciphertext="$(jq -r .ciphertext <<<"$wrapped")"
+got="$(bao write -format=json ra/session-key/pkcs1v15/scep-ra ciphertext="$ciphertext" \
   key_version=1 session_key_length=32 | jq -r .data.session_key)"
-[ "$got" = "$(base64 -w0 "$work/session.key")" ] || fail "recovered session key differs"
-ok "PKCS#1 v1.5 session-key transport recovers the OpenSSL-wrapped key"
+[ "$got" = "$(jq -r .session_key <<<"$wrapped")" ] || fail "recovered session key differs"
+ok "PKCS#1 v1.5 session-key transport recovers the wrapped key"
 
 printf '%s\n' 'path "ra/session-key/pkcs1v15/scep-ra" { capabilities = ["update"] }' \
   'path "ra/sign/scep-ra/*" { capabilities = ["update"] }' | docker exec -i -e BAO_TOKEN="$BAO_TOKEN" "$name" bao policy write ra-runtime - >/dev/null
@@ -88,7 +91,7 @@ for path in "read ra/export/signing-key/scep-ra" "read ra/backup/scep-ra" "write
   # shellcheck disable=SC2086
   if BAO_TOKEN="$rt" bao $path >/dev/null 2>&1; then fail "runtime token allowed: $path"; fi
 done
-BAO_TOKEN="$rt" bao write -format=json ra/session-key/pkcs1v15/scep-ra ciphertext="$(base64 -w0 "$work/wrapped.bin")" \
+BAO_TOKEN="$rt" bao write -format=json ra/session-key/pkcs1v15/scep-ra ciphertext="$ciphertext" \
   key_version=1 session_key_length=32 >/dev/null || fail "runtime token denied its operation"
 ok "runtime token: operation allowed; export, backup and key config denied"
 echo "smoke-test: PASS $image"

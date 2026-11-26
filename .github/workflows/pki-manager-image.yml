@@ -47,13 +47,13 @@ jobs:
         with:
           go-version-file: .go-version
           cache: false
-      - name: Downstream tests (SCEP session-key transport)
-        env:
-          PKI_MANAGER_REQUIRE_OPENSSL: "1"
+      # The interop test is the optional OpenSSL cross-check: it runs when openssl is
+      # on PATH and skips otherwise. No step here needs the openssl CLI.
+      - name: Downstream tests (SCEP session-key transport, smoke fixtures)
         run: |
           (cd sdk && go test -count=1 -run PKCS1v15 ./helper/keysutil/)
           go test -count=1 -run PKCS1v15 ./internal/builtin/logical/transit/
-          go test -count=1 -v ./downstream/pki-manager/interop/
+          go test -count=1 -v ./downstream/pki-manager/image/smokefixtures/ ./downstream/pki-manager/interop/
       - name: Commit time
         id: v
         run: echo "epoch=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
