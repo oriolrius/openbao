@@ -241,13 +241,22 @@ func TestTransit_PKCS1v15SessionKey_Route(t *testing.T) {
 	})
 
 	t.Run("version lifecycle", func(t *testing.T) {
-		v1Key, v1Ciphertext := skEncrypt(t, pub1, 32)
 		resp, err := skWrite(t, b, s, "keys/scep-ra/rotate", nil)
 		require.NoError(t, err)
 		require.False(t, resp.IsError())
 		require.Equal(t, true, skRead(t, b, s, "keys/scep-ra").Data["allow_pkcs1v15_session_key"], "rotation keeps the opt-in")
 
 		pub2 := skPublicKey(t, b, s, "scep-ra", 2)
+		// Use a ciphertext in the public input range of both RSA keys.
+		v1Key, v1Ciphertext := skEncrypt(t, pub1, 32)
+		for {
+			raw, err := base64.StdEncoding.DecodeString(v1Ciphertext)
+			require.NoError(t, err)
+			if bytes.Compare(raw, pub2.N.Bytes()) < 0 {
+				break
+			}
+			v1Key, v1Ciphertext = skEncrypt(t, pub1, 32)
+		}
 		v2Key, v2Ciphertext := skEncrypt(t, pub2, 32)
 		resp, err = skUnwrap(t, b, s, "scep-ra", 2, v2Ciphertext, 32)
 		requireSessionKey(t, resp, err, v2Key)
@@ -264,6 +273,17 @@ func TestTransit_PKCS1v15SessionKey_Route(t *testing.T) {
 		require.False(t, resp.IsError())
 		resp, err = skUnwrap(t, b, s, "scep-ra", 1, v1Ciphertext, 32)
 		requireRequestError(t, resp, err, "too old")
+
+		resp, err = skWrite(t, b, s, "keys/scep-ra/config", map[string]any{"min_encryption_version": 2})
+		require.NoError(t, err)
+		require.False(t, resp.IsError())
+		resp, err = skWrite(t, b, s, "keys/scep-ra/trim", map[string]any{"min_available_version": 2})
+		require.NoError(t, err)
+		require.False(t, resp != nil && resp.IsError())
+		resp, err = skUnwrap(t, b, s, "scep-ra", 1, v1Ciphertext, 32)
+		requireRequestError(t, resp, err, "too old")
+		resp, err = skUnwrap(t, b, s, "scep-ra", 2, v2Ciphertext, 32)
+		requireSessionKey(t, resp, err, v2Key)
 
 		resp, err = b.HandleRequest(t.Context(), &logical.Request{
 			Storage: s, Operation: logical.DeleteOperation, Path: "keys/scep-ra/soft-delete",

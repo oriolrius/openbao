@@ -57,6 +57,16 @@ request does not show whether a fallback was used. The CMS content
 decryption that follows fails as with any wrong key. The caller must not
 expose a different error for that failure.
 
+## Deployment constraints
+
+Create or import the RA key with both `exportable=false` and
+`allow_plaintext_backup=false`. The transport opt-in does not enforce these
+settings. Deny key configuration to the RA and application runtime identities.
+Enabling either export setting later is irreversible.
+
+Go FIPS-only mode disables this legacy RSA operation. Check SCEP readiness
+with the real RA self-test before routing enrollments to a new instance.
+
 ## Authorization and audit
 
 Grant the RA runtime identity only the operation path of its own key, plus
