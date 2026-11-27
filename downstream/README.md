@@ -93,12 +93,12 @@ The label `org.opencontainers.image.revision` names the source commit.
 |---|---|
 | Branch `pki-manager` | The source of this build (the GitHub default branch of this fork) |
 | Branch `main` | Follows upstream `openbao/openbao` `main` (GitHub fork sync); not used for builds |
-| Tags `v<upstream>-pki-manager.<n>` | One release; `<n>` counts the downstream releases on one upstream version |
+| Tags `v<upstream>-pki-manager.<n>` | One release, with notes on the [releases page](https://github.com/oriolrius/openbao/releases); `<n>` counts the downstream releases on one upstream version |
 
 | Release | Upstream | Commit | Change |
 |---|---|---|---|
 | `v2.7.3-pki-manager.2` | v2.7.3 | `fcf3d59` | Test: the cross-version ciphertext check is bounded by both RSA moduli. No behaviour change |
-| `v2.7.3-pki-manager.1` | v2.7.3 | `32c18cb` | First release: `session-key/pkcs1v15`, reproducible signed image |
+| `v2.7.3-pki-manager.1` | v2.7.3 | `32c18cb` | First build: `session-key/pkcs1v15` and the reproducible image build. Source only: no image was published |
 
 A new upstream release is merged into `pki-manager`, tested, and tagged
 `v<new upstream>-pki-manager.1`.
