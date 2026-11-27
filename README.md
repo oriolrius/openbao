@@ -1,3 +1,13 @@
+# OpenBao — PKI Manager build
+
+> **This is a downstream build of OpenBao, not the official release.** It is OpenBao v2.7.3 plus an
+> opt-in Transit operation for SCEP (RSA PKCS#1 v1.5 session-key transport) and a reproducible,
+> signed `amd64`/`arm64` image: `ghcr.io/oriolrius/openbao:2.7.3-pki-manager.2`. It runs with or
+> without [PKI Manager](https://pki-manager.oriolrius.cat).
+> **What it adds, how to run and verify it, versions and licence:
+> [downstream/README.md](downstream/README.md).** The official project is
+> [openbao/openbao](https://github.com/openbao/openbao); the upstream README follows.
+
 # OpenBao
 
 ----
