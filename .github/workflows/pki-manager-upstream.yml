@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Upstream watch for the PKI Manager build (downstream/README.md#how-the-build-follows-upstream).
+#
+# Every Monday (or by hand) find the latest upstream OpenBao release. When it is not merged
+# into `pki-manager` yet, try the merge here (nothing is pushed) and open an issue with the
+# result: a clean merge, or the conflicting files. The merge itself is done by the maintainer
+# with downstream/scripts/sync-upstream.sh, because a GITHUB_TOKEN cannot push upstream
+# workflow changes and its pull requests do not start the checks.
+name: PKI Manager upstream watch
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Upstream tag to check (default the latest upstream release)
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: pki-manager-upstream
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: pki-manager
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Latest upstream release
+        id: up
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${INPUT_TAG:-$(gh api repos/openbao/openbao/releases/latest --jq .tag_name)}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "unexpected tag '$tag'"; exit 1; }
+          git fetch --no-tags https://github.com/openbao/openbao.git "+refs/tags/$tag:refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "$tag" HEAD; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+            echo "$tag is already in pki-manager" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Trial merge (not pushed)
+        id: merge
+        if: steps.up.outputs.merged == 'false'
+        env:
+          TAG: ${{ steps.up.outputs.tag }}
+        run: |
+          git config user.name "upstream-watch"
+          git config user.email "upstream-watch@users.noreply.github.com"
+          if git merge --no-ff --no-commit "$TAG" > /dev/null 2>&1; then
+            echo "conflicts=" >> "$GITHUB_OUTPUT"
+          else
+            { echo "conflicts<<EOF"; git diff --name-only --diff-filter=U; echo "EOF"; } >> "$GITHUB_OUTPUT"
+          fi
+          { echo "go_old=$(git show HEAD:.go-version)"; echo "go_new=$(git show "$TAG":.go-version)"; } >> "$GITHUB_OUTPUT"
+          git merge --abort || true
+      - name: Open the issue
+        if: steps.up.outputs.merged == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.up.outputs.tag }}
+          CONFLICTS: ${{ steps.merge.outputs.conflicts }}
+          GO_OLD: ${{ steps.merge.outputs.go_old }}
+          GO_NEW: ${{ steps.merge.outputs.go_new }}
+        run: |
+          title="Upstream OpenBao $TAG is not merged into pki-manager"
+          n=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --search "in:title \"$title\"" --json number --jq 'length')
+          if [ "$n" != 0 ]; then echo "issue exists" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          {
+            echo "Upstream released [$TAG](https://github.com/openbao/openbao/releases/tag/$TAG)."
+            echo
+            if [ -z "$CONFLICTS" ]; then
+              echo "**Trial merge: clean.**"
+            else
+              echo "**Trial merge: conflicts** in these files:"
+              echo; printf '%s\n' "$CONFLICTS" | sed 's/^/- `/; s/$/`/'
+            fi
+            echo
+            if [ "$GO_OLD" != "$GO_NEW" ]; then
+              echo "**Go changes** from $GO_OLD to $GO_NEW: the script stops until \`GO_IMAGE\` in \`downstream/pki-manager/image/Dockerfile\` is updated."
+              echo
+            fi
+            echo "Merge it:"
+            echo
+            echo '```sh'
+            echo "downstream/scripts/sync-upstream.sh $TAG"
+            echo '```'
+            echo
+            echo "Procedure: [downstream/README.md]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/pki-manager/downstream/README.md#how-the-build-follows-upstream)."
+          } > body.md
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file body.md
