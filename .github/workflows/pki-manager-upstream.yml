@@ -2,7 +2,7 @@
 #
 # Upstream watch for the PKI Manager build (downstream/README.md#how-the-build-follows-upstream).
 #
-# Every Monday (or by hand) find the latest upstream OpenBao release. When it is not merged
+# Every Monday (or by hand) find the highest stable upstream OpenBao release. When it is not merged
 # into `pki-manager` yet, try the merge here (nothing is pushed) and open an issue with the
 # result: a clean merge, or the conflicting files. The merge itself is done by the maintainer
 # with downstream/scripts/sync-upstream.sh, because a GITHUB_TOKEN cannot push upstream
@@ -42,8 +42,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
-          tag="${INPUT_TAG:-$(gh api repos/openbao/openbao/releases/latest --jq .tag_name)}"
+          # The highest stable version, not the GitHub "latest" flag: a patch on an older line
+          # (for example 2.6.x) can be published after a newer release and must not be chosen.
+          tag="${INPUT_TAG:-$(gh api 'repos/openbao/openbao/releases?per_page=100' --jq '.[] | select(.prerelease or .draft | not) | .tag_name' | grep -E '^v[0-9]+[.][0-9]+[.][0-9]+$' | sort -V | tail -1)}"
           [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "unexpected tag '$tag'"; exit 1; }
+          cur=$(sed -n 's/^ARG OPENBAO_VERSION=//p' downstream/pki-manager/image/Dockerfile | head -1)
+          if [ "$(printf '%s\n' "$cur" "${tag#v}" | sort -V | tail -1)" != "${tag#v}" ]; then
+            echo "$tag is older than the build ($cur); only the newest upstream release is followed" >> "$GITHUB_STEP_SUMMARY"
+            echo "merged=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           git fetch --no-tags https://github.com/openbao/openbao.git "+refs/tags/$tag:refs/tags/$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           if git merge-base --is-ancestor "$tag" HEAD; then
