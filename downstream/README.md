@@ -120,7 +120,8 @@ The label `org.opencontainers.image.revision` names the source commit.
 The repository is a GitHub fork of `openbao/openbao`. Our commits go only to `pki-manager`.
 
 1. Every Monday the workflow [`pki-manager-upstream.yml`](../.github/workflows/pki-manager-upstream.yml)
-   finds the latest upstream release. When it is not in `pki-manager`, the workflow tries the
+   finds the highest stable upstream release. The build follows only the newest release: patch
+   releases of older lines (for example 2.6.x) are not merged. When it is not in `pki-manager`, the workflow tries the
    merge (it pushes nothing) and opens an issue: a clean merge, or the conflicting files.
 2. The maintainer runs `downstream/scripts/sync-upstream.sh <tag>`. It syncs `main`, merges
    the tag into a branch `sync/<tag>`, sets the OpenBao version in the image build, checks the

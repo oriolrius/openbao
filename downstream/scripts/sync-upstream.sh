@@ -3,7 +3,7 @@
 #
 # Merge an upstream OpenBao release into the PKI Manager build and open the pull request.
 #
-#   downstream/scripts/sync-upstream.sh [vX.Y.Z]   # default: the latest upstream release
+#   downstream/scripts/sync-upstream.sh [vX.Y.Z]   # default: the highest stable upstream release
 #   downstream/scripts/sync-upstream.sh --continue # after you fix a conflict or GO_IMAGE
 #
 # Steps: sync `main` with upstream, make branch sync/<tag> from origin/pki-manager, merge the
@@ -27,8 +27,11 @@ if [ "${1:-}" = --continue ]; then
   [ ! -f "$(git rev-parse --git-path MERGE_HEAD)" ] || die "finish the merge first: fix the files, git add, git commit --no-edit"
   git merge-base --is-ancestor "$tag" HEAD || die "$tag is not merged in $branch"
 else
-  tag=${1:-$(gh api repos/openbao/openbao/releases/latest --jq .tag_name)}
+  tag=${1:-$(gh api 'repos/openbao/openbao/releases?per_page=100' --jq '.[] | select(.prerelease or .draft | not) | .tag_name' | grep -E '^v[0-9]+[.][0-9]+[.][0-9]+$' | sort -V | tail -1)}
   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "unexpected tag '$tag'"
+  cur=$(sed -n 's/^ARG OPENBAO_VERSION=//p' "$DOCKERFILE" | head -1)
+  [ "$(printf '%s\n' "$cur" "${tag#v}" | sort -V | tail -1)" = "${tag#v}" ] \
+    || die "$tag is older than the build ($cur): the build follows only the newest upstream release"
   [ -z "$(git status --porcelain)" ] || die "the working tree is not clean"
   git fetch -q origin "+refs/heads/pki-manager:refs/remotes/origin/pki-manager"
   git fetch -q --no-tags "$UPSTREAM_URL" "+refs/tags/$tag:refs/tags/$tag"
