@@ -30,7 +30,7 @@ else
   tag=${1:-$(gh api repos/openbao/openbao/releases/latest --jq .tag_name)}
   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "unexpected tag '$tag'"
   [ -z "$(git status --porcelain)" ] || die "the working tree is not clean"
-  git fetch -q origin pki-manager
+  git fetch -q origin "+refs/heads/pki-manager:refs/remotes/origin/pki-manager"
   git fetch -q --no-tags "$UPSTREAM_URL" "+refs/tags/$tag:refs/tags/$tag"
   if git merge-base --is-ancestor "$tag" origin/pki-manager; then
     echo "$tag is already in pki-manager. Nothing to do."; exit 0

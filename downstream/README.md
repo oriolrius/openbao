@@ -18,6 +18,21 @@ It is maintained by one person ([Oriol Rius](https://oriolrius.cat)) for his own
 an official OpenBao release, it is not affiliated with the OpenBao project or the Linux
 Foundation, and there is no support contract.
 
+## Features
+
+Each downstream feature has an id, a specification and tests. Its status is **downstream
+only** (kept here) or **upstream candidate** (to propose to OpenBao, by hand).
+
+| Id | Feature | Kind | Specification | Status |
+|---|---|---|---|---|
+| D1 | Transit `session-key/pkcs1v15`: RSA PKCS#1 v1.5 key transport for SCEP | Core patch (Transit) | [pkcs1v15-session-key.md](pki-manager/pkcs1v15-session-key.md) | Upstream candidate |
+| D2 | Reproducible, signed, server-only image for amd64 and arm64 | Build | [image.md](pki-manager/image.md) | Downstream only |
+
+A new feature goes in as an **external plugin** when it does not need OpenBao internals: its
+own repository and version, put in the image at build time. It is a **core patch** only when it
+must read internal state (D1 must read the Transit key material). Core patches add files where
+possible and change few upstream lines, so that upstream merges stay easy.
+
 ## What it adds to OpenBao 2.7.3
 
 | Area | Official OpenBao 2.7.3 | This build |
@@ -100,8 +115,26 @@ The label `org.opencontainers.image.revision` names the source commit.
 | `v2.7.3-pki-manager.2` | v2.7.3 | `fcf3d59` | Test: the cross-version ciphertext check is bounded by both RSA moduli. No behaviour change |
 | `v2.7.3-pki-manager.1` | v2.7.3 | `32c18cb` | First build: `session-key/pkcs1v15` and the reproducible image build. Source only: no image was published |
 
-A new upstream release is merged into `pki-manager`, tested, and tagged
-`v<new upstream>-pki-manager.1`.
+## How the build follows upstream
+
+The repository is a GitHub fork of `openbao/openbao`. Our commits go only to `pki-manager`.
+
+1. Every Monday the workflow [`pki-manager-upstream.yml`](../.github/workflows/pki-manager-upstream.yml)
+   finds the latest upstream release. When it is not in `pki-manager`, the workflow tries the
+   merge (it pushes nothing) and opens an issue: a clean merge, or the conflicting files.
+2. The maintainer runs `downstream/scripts/sync-upstream.sh <tag>`. It syncs `main`, merges
+   the tag into a branch `sync/<tag>`, sets the OpenBao version in the image build, checks the
+   Go image, pushes and opens a pull request to `pki-manager`. When a step needs a person (a
+   conflict, a new Go image), it stops and says what to do; then `--continue`.
+3. The pull request runs the upstream tests and the downstream tests. When they pass: merge,
+   tag `v<tag>-pki-manager.1`, write the release notes. The tag publishes the image.
+
+The script runs with the maintainer's GitHub account and not in CI: a workflow token cannot
+push the upstream workflow files, and its pull requests do not start the checks.
+
+A new downstream feature: branch `feat/<name>` from `pki-manager`, pull request to
+`pki-manager` of **this** repository (`gh pr create --repo oriolrius/openbao --base pki-manager`;
+`gh` proposes the upstream repository by default), then the next `-pki-manager.<n>` tag.
 
 ## Tests
 
